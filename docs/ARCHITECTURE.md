@@ -1,438 +1,457 @@
-# Arquitetura do Sistema - Sistema de Gestão de Estoque
+# Arquitetura do Sistema - Controle de Estoque
 
-## Visão Arquitetural
+## Visão Geral da Arquitetura
 
-### Arquitetura Geral
+Sistema baseado em microserviços com frontend monolítico, projetado para alta disponibilidade, escalabilidade horizontal e manutenibilidade.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Cliente (Browser/Mobile)                 │
+│                    Cliente (Browser/Mobile)                  │
 └──────────────────────────────┬──────────────────────────────┘
                                │ HTTPS
 ┌──────────────────────────────▼──────────────────────────────┐
-│                    Load Balancer (Nginx)                    │
+│                    Cloudflare CDN + WAF                     │
 └──────────────────────────────┬──────────────────────────────┘
                                │
-                ┌──────────────┼──────────────┐
-                │              │              │
-        ┌───────▼──────┐ ┌─────▼──────┐ ┌─────▼──────┐
-        │   Frontend   │ │   API GW   │ │   Static   │
-        │   Next.js    │ │   Fastify  │ │   Assets   │
-        └───────┬──────┘ └─────┬──────┘ └────────────┘
-                │              │
-        ┌───────▼──────────────▼──────┐
-        │        Services Layer        │
-        ├──────────────────────────────┤
-        │ • Auth Service               │
-        │ • Product Service            │
-        │ • Inventory Service          │
-        │ • Supplier Service           │
-        │ • Report Service             │
-        └───────┬──────────────┬──────┘
-                │              │
-        ┌───────▼──────────────▼──────┐
-        │       Data Access Layer      │
-        ├──────────────────────────────┤
-        │ • PostgreSQL (Primary)       │
-        │ • Redis (Cache/Sessions)     │
-        │ • Bull (Job Queue)           │
-        └──────────────────────────────┘
+┌──────────────────────────────▼──────────────────────────────┐
+│                    Nginx (Load Balancer)                    │
+└──────────────┬──────────────────────────────┬───────────────┘
+               │                              │
+    ┌──────────▼──────────┐        ┌──────────▼──────────┐
+    │   Frontend (Next.js)│        │   Backend (Fastify) │
+    │   - SSR/SSG         │        │   - API REST        │
+    │   - PWA             │        │   - WebSocket       │
+    └──────────┬──────────┘        └──────────┬──────────┘
+               │                              │
+    ┌──────────▼──────────────────────────────▼──────────┐
+    │              Service Mesh (Consul)                 │
+    │              - Service Discovery                   │
+    │              - Health Checks                       │
+    │              - Circuit Breaker                     │
+    └──────────┬──────────────────────────────┬──────────┘
+               │                              │
+    ┌──────────▼──────────┐        ┌──────────▼──────────┐
+    │   PostgreSQL        │        │   Redis             │
+    │   - Primary         │        │   - Cache           │
+    │   - Replica         │        │   - Session         │
+    │   - Read Replicas   │        │   - Pub/Sub         │
+    └─────────────────────┘        └─────────────────────┘
 ```
 
 ## Stack Tecnológica
 
-### Frontend
-- **Framework**: Next.js 15 (App Router)
-- **UI Library**: React 19
-- **State Management**: Zustand
+### Frontend (Next.js 15)
+- **Framework**: Next.js 15 com App Router
+- **UI Library**: React 19 + TypeScript
+- **State Management**: Zustand (leve) + React Query
 - **Styling**: Tailwind CSS + CSS Modules
-- **Forms**: React Hook Form + Zod
-- **Charts**: Recharts
+- **Forms**: React Hook Form + Zod (validação)
 - **Icons**: Lucide React
+- **Charts**: Recharts
+- **Tables**: TanStack Table
+- **Internationalization**: next-intl
 - **Testing**: Jest + React Testing Library + Cypress
 
-### Backend
-- **Runtime**: Node.js 20 LTS
-- **Framework**: Fastify
-- **Validation**: Zod
-- **Authentication**: JWT + bcrypt
-- **Rate Limiting**: fastify-rate-limit
-- **CORS**: @fastify/cors
-- **Swagger**: @fastify/swagger
+### Backend (Fastify)
+- **Framework**: Fastify 4.x (alta performance)
+- **Language**: TypeScript
+- **Validation**: Zod + @fastify/type-provider-zod
+- **Authentication**: @fastify/jwt + @fastify/cookie
+- **Database ORM**: Prisma (type-safe)
+- **Caching**: @fastify/redis
+- **Rate Limiting**: @fastify/rate-limit
+- **WebSocket**: @fastify/websocket
+- **File Upload**: @fastify/multipart
+- **Documentação**: @fastify/swagger + @fastify/swagger-ui
 - **Testing**: Jest + Supertest
 
 ### Banco de Dados
-- **Primary**: PostgreSQL 16
-- **Cache**: Redis 7
-- **ORM**: Prisma
-- **Migrations**: Prisma Migrate
-- **Seeding**: Prisma Seed
+- **Primary**: PostgreSQL 16 (transacional)
+- **Cache**: Redis 7 (sessões, cache, pub/sub)
+- **Search**: Elasticsearch 8 (busca full-text)
+- **Queue**: RabbitMQ (processamento assíncrono)
 
 ### Infraestrutura
-- **Container**: Docker + Docker Compose
-- **Orchestration**: Docker Swarm (future: Kubernetes)
-- **Reverse Proxy**: Nginx
+- **Containerização**: Docker + Docker Compose
+- **Orquestração**: Kubernetes (produção)
 - **CI/CD**: GitHub Actions
 - **Monitoring**: Prometheus + Grafana
-- **Logging**: ELK Stack
-- **Cloud**: Google Cloud Platform
+- **Logging**: ELK Stack (Elasticsearch, Logstash, Kibana)
+- **Tracing**: Jaeger
+- **Proxy**: Nginx
+- **Tunnel**: Cloudflared (para acesso externo)
 
 ## Design de Sistema
 
-### Princípios Arquiteturais
+### Princípios de Design
 1. **Separation of Concerns**: Cada serviço tem responsabilidade única
-2. **Domain-Driven Design**: Organização por domínios de negócio
-3. **Event-Driven**: Comunicação assíncrona entre serviços
-4. **CQRS**: Separação de comandos e consultas
-5. **Idempotency**: Operações podem ser repetidas sem efeitos colaterais
+2. **Loose Coupling**: Comunicação via API REST/WebSocket
+3. **High Cohesion**: Componentes relacionados agrupados
+4. **Fail Fast**: Validação precoce e tratamento de erros
+5. **Idempotency**: Operações repetíveis sem efeitos colaterais
 
-### Padrões de Design
-- **Repository Pattern**: Abstraction de acesso a dados
-- **Factory Pattern**: Criação de objetos complexos
+### Padrões Arquiteturais
+- **Clean Architecture**: Domínio → Aplicação → Infraestrutura
+- **CQRS**: Separação de comandos (write) e queries (read)
+- **Event Sourcing**: Histórico imutável de eventos
+- **Repository Pattern**: Abstração de acesso a dados
 - **Strategy Pattern**: Algoritmos intercambiáveis
-- **Observer Pattern**: Notificações de eventos
-- **Decorator Pattern**: Adição de funcionalidades
+- **Observer Pattern**: Notificações e eventos
 
 ## API Contracts
 
-### Autenticação
-```typescript
-// POST /api/auth/login
-interface LoginRequest {
-  email: string;
-  password: string;
+### REST API Design
+
+#### Base URL
+```
+https://api.estoque.zanetti.dev/v1
+```
+
+#### Autenticação
+```http
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "usuario@empresa.com",
+  "password": "senha123"
 }
 
-interface LoginResponse {
-  token: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: 'admin' | 'operator';
-  };
-}
-
-// POST /api/auth/refresh
-interface RefreshResponse {
-  token: string;
+Response:
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "expires_in": 3600,
+  "user": {
+    "id": "uuid",
+    "name": "Nome do Usuário",
+    "email": "usuario@empresa.com",
+    "role": "admin"
+  }
 }
 ```
 
-### Produtos
-```typescript
-// GET /api/products
-interface GetProductsQuery {
-  page?: number;
-  limit?: number;
-  search?: string;
-  category?: string;
-  minStock?: number;
-  maxStock?: number;
-}
+#### Produtos
+```http
+GET /products
+Authorization: Bearer {token}
+Query Params:
+  - page: number (default: 1)
+  - limit: number (default: 20)
+  - search: string
+  - category: string
+  - sort: "name" | "created_at" | "updated_at"
+  - order: "asc" | "desc"
 
-interface ProductResponse {
-  id: string;
-  code: string;
-  name: string;
-  description?: string;
-  category: string;
-  currentStock: number;
-  minStock: number;
-  unit: string;
-  price: number;
-  cost: number;
-  supplierId?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+POST /products
+Authorization: Bearer {token}
+Content-Type: multipart/form-data
 
-// POST /api/products
-interface CreateProductRequest {
-  code: string;
-  name: string;
-  description?: string;
-  category: string;
-  minStock: number;
-  unit: string;
-  price: number;
-  cost: number;
-  supplierId?: string;
-}
-
-// PUT /api/products/:id
-interface UpdateProductRequest {
-  name?: string;
-  description?: string;
-  category?: string;
-  minStock?: number;
-  price?: number;
-  cost?: number;
+{
+  "code": "PROD001",
+  "name": "Produto Exemplo",
+  "description": "Descrição do produto",
+  "category_id": "uuid",
+  "unit": "UN",
+  "price": 29.90,
+  "cost": 15.50,
+  "min_stock": 10,
+  "max_stock": 100,
+  "image": File
 }
 ```
 
-### Movimentações
-```typescript
-// POST /api/inventory/entries
-interface CreateEntryRequest {
-  supplierId: string;
-  products: Array<{
-    productId: string;
-    quantity: number;
-    unitCost: number;
-    batch?: string;
-    expirationDate?: Date;
-  }>;
-  notes?: string;
-}
+#### Movimentações
+```http
+POST /movements
+Authorization: Bearer {token}
+Content-Type: application/json
 
-// POST /api/inventory/withdrawals
-interface CreateWithdrawalRequest {
-  reason: 'sale' | 'transfer' | 'loss' | 'adjustment';
-  destination?: string;
-  products: Array<{
-    productId: string;
-    quantity: number;
-    notes?: string;
-  }>;
-  notes?: string;
-}
-
-// GET /api/inventory/movements
-interface MovementResponse {
-  id: string;
-  type: 'entry' | 'withdrawal' | 'adjustment';
-  productId: string;
-  quantity: number;
-  previousStock: number;
-  newStock: number;
-  userId: string;
-  createdAt: Date;
-  metadata: Record<string, any>;
+{
+  "type": "ENTRY", // ENTRY, EXIT, ADJUSTMENT, TRANSFER
+  "product_id": "uuid",
+  "quantity": 10,
+  "unit_price": 15.50,
+  "document_number": "NF123456",
+  "date": "2026-03-22T10:00:00Z",
+  "notes": "Notas adicionais"
 }
 ```
 
-### Fornecedores
-```typescript
-// GET /api/suppliers
-interface SupplierResponse {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  address?: string;
-  rating: number;
-  totalPurchases: number;
-  lastPurchaseDate?: Date;
-  createdAt: Date;
-}
+### WebSocket API
+```javascript
+// Conexão
+const ws = new WebSocket('wss://api.estoque.zanetti.dev/ws');
 
-// POST /api/suppliers
-interface CreateSupplierRequest {
-  name: string;
-  email: string;
-  phone: string;
-  address?: string;
-  taxId?: string;
-}
+// Eventos
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    type: 'AUTH',
+    token: 'jwt_token'
+  }));
+  
+  ws.send(JSON.stringify({
+    type: 'SUBSCRIBE',
+    channel: 'stock_updates'
+  }));
+};
+
+// Recebendo atualizações em tempo real
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  
+  switch(data.type) {
+    case 'STOCK_UPDATE':
+      console.log('Estoque atualizado:', data.payload);
+      break;
+    case 'ALERT':
+      console.log('Alerta:', data.payload);
+      break;
+  }
+};
 ```
 
 ## Estrutura de Diretórios
 
+### Frontend (Next.js)
 ```
-src/
-├── frontend/
-│   ├── app/                    # Next.js App Router
+apps/frontend/
+├── src/
+│   ├── app/                    # App Router
 │   │   ├── (auth)/            # Rotas de autenticação
-│   │   ├── dashboard/         # Dashboard principal
-│   │   ├── products/          # Gestão de produtos
-│   │   ├── inventory/         # Movimentações
-│   │   ├── suppliers/         # Fornecedores
-│   │   ├── reports/           # Relatórios
-│   │   └── layout.tsx         # Layout principal
+│   │   ├── (dashboard)/       # Rotas do dashboard
+│   │   ├── api/               # API Routes
+│   │   └── layout.tsx         # Layout raiz
 │   ├── components/            # Componentes reutilizáveis
-│   │   ├── ui/                # Componentes básicos UI
+│   │   ├── ui/                # Componentes base
 │   │   ├── forms/             # Componentes de formulário
 │   │   ├── tables/            # Componentes de tabela
 │   │   └── charts/            # Componentes de gráficos
-│   ├── lib/                   # Utilitários e configurações
-│   │   ├── api/               # Cliente API
+│   ├── lib/                   # Utilitários
+│   │   ├── api/               # Cliente HTTP
 │   │   ├── auth/              # Autenticação
-│   │   ├── store/             # Zustand stores
-│   │   └── utils/             # Funções utilitárias
+│   │   ├── utils/             # Funções utilitárias
+│   │   └── constants/         # Constantes
+│   ├── hooks/                 # Custom hooks
+│   ├── stores/                # Zustand stores
+│   ├── types/                 # TypeScript types
 │   └── styles/                # Estilos globais
-│
-├── backend/
-│   ├── src/
-│   │   ├── modules/           # Módulos por domínio
-│   │   │   ├── auth/          # Autenticação
-│   │   │   ├── products/      # Produtos
-│   │   │   ├── inventory/     # Estoque
-│   │   │   ├── suppliers/     # Fornecedores
-│   │   │   └── reports/       # Relatórios
-│   │   ├── core/              # Núcleo da aplicação
-│   │   │   ├── config/        # Configurações
-│   │   │   ├── database/      # Database setup
-│   │   │   ├── middleware/    # Middlewares
-│   │   │   └── utils/         # Utilitários
-│   │   ├── shared/            # Código compartilhado
-│   │   │   ├── dtos/          # Data Transfer Objects
-│   │   │   ├── schemas/       # Schemas de validação
-│   │   │   └── types/         # Tipos TypeScript
-│   │   └── app.ts             # Aplicação Fastify
-│   └── prisma/                # Schema e migrations
-│       ├── schema.prisma      # Schema do banco
-│       └── migrations/        # Migrations
-│
-└── shared/                    # Código compartilhado
-    ├── types/                 # Tipos compartilhados
-    ├── constants/             # Constantes
-    └── utils/                 # Utilitários compartilhados
+├── public/                    # Arquivos estáticos
+└── tests/                     # Testes
+```
+
+### Backend (Fastify)
+```
+apps/backend/
+├── src/
+│   ├── core/                  # Núcleo da aplicação
+│   │   ├── domain/            # Entidades e value objects
+│   │   ├── application/       # Casos de uso
+│   │   └── infrastructure/    # Implementações externas
+│   ├── modules/               # Módulos da aplicação
+│   │   ├── auth/              # Autenticação
+│   │   ├── products/          # Produtos
+│   │   ├── movements/         # Movimentações
+│   │   ├── reports/           # Relatórios
+│   │   └── users/             # Usuários
+│   ├── shared/                # Código compartilhado
+│   │   ├── errors/            # Erros customizados
+│   │   ├── middleware/        # Middleware global
+│   │   ├── plugins/           # Plugins Fastify
+│   │   └── utils/             # Utilitários
+│   ├── config/                # Configurações
+│   ├── database/              # Configuração do banco
+│   └── server.ts              # Ponto de entrada
+├── prisma/                    # Schema Prisma
+└── tests/                     # Testes
 ```
 
 ## Comunicação entre Serviços
 
 ### Síncrona (HTTP/REST)
-- Frontend ↔ Backend
-- Serviços internos (baixa latência)
+- Frontend → Backend (API REST)
+- Backend → Serviços externos (integrações)
+- Health checks entre serviços
 
-### Assíncrona (Message Queue)
-- Processamento de relatórios
-- Envio de notificações
-- Sincronização com sistemas externos
-
-### Eventos
+### Assíncrona (Eventos)
 ```typescript
-// Evento: Produto com estoque baixo
-interface LowStockEvent {
-  type: 'LOW_STOCK';
-  productId: string;
-  productName: string;
-  currentStock: number;
-  minStock: number;
-  timestamp: Date;
-}
+// Producer (Backend)
+await rabbitmq.publish('stock.movement.created', {
+  productId: 'uuid',
+  quantity: 10,
+  type: 'ENTRY',
+  userId: 'uuid',
+  timestamp: new Date().toISOString()
+});
 
-// Evento: Movimentação registrada
-interface MovementEvent {
-  type: 'MOVEMENT_REGISTERED';
-  movementId: string;
-  productId: string;
-  quantity: number;
-  movementType: 'entry' | 'withdrawal';
-  userId: string;
-  timestamp: Date;
-}
+// Consumer (Serviço de Notificações)
+rabbitmq.subscribe('stock.movement.created', async (message) => {
+  if (message.quantity < 0) {
+    await notificationService.sendLowStockAlert(message.productId);
+  }
+});
 ```
+
+### Em Tempo Real (WebSocket)
+- Atualizações de estoque em tempo real
+- Notificações push para usuários
+- Dashboard com métricas ao vivo
 
 ## Segurança
 
-### Autenticação
+### Camadas de Segurança
+1. **Cloudflare WAF**: Proteção contra DDoS e ataques web
+2. **Nginx**: Rate limiting e filtragem básica
+3. **Application Layer**: Validação de entrada, sanitização
+4. **Database Layer**: Prepared statements, row-level security
+5. **Infrastructure**: Network policies, secrets management
+
+### Autenticação e Autorização
 - JWT com refresh tokens
-- Tokens com expiração de 15 minutos
-- Refresh tokens com expiração de 7 dias
-- Revogação de tokens
-
-### Autorização
 - RBAC (Role-Based Access Control)
-- Permissões granulares
-- Middleware de autorização
+- Permissões granulares por recurso
+- Sessões distribuídas no Redis
+- 2FA opcional para administradores
 
-### Proteção
-- Rate limiting por IP/usuário
-- CORS configurado
-- Helmet para headers de segurança
-- Sanitização de inputs
-- Validação de schemas
+### Criptografia
+- TLS 1.3 em todas as comunicações
+- Dados sensíveis criptografados em repouso (AES-256)
+- Senhas com bcrypt (cost: 12)
+- Secrets no HashiCorp Vault (produção)
 
-## Performance
-
-### Cache Strategy
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Browser   │────▶│     CDN     │────▶│   Redis     │
-│   Cache     │     │   Cache     │     │   Cache     │
-└─────────────┘     └─────────────┘     └─────────────┘
-                           │                     │
-                    ┌──────▼─────────────┐       │
-                    │   Nginx Cache      │       │
-                    └────────────────────┘       │
-                           │                     │
-                    ┌──────▼─────────────────────▼────┐
-                    │        Application Layer        │
-                    └─────────────────────────────────┘
-                           │
-                    ┌──────▼────┐
-                    │ PostgreSQL│
-                    └───────────┘
-```
-
-### Otimizações
-- **Lazy Loading**: Componentes e rotas
-- **Code Splitting**: Por rota e feature
-- **Image Optimization**: Next.js Image
-- **Database Indexing**: Índices estratégicos
-- **Query Optimization**: Paginação e filtros
-
-## Monitoramento
+## Monitoramento e Observabilidade
 
 ### Métricas
-- **Application**: Request rate, error rate, latency
-- **Database**: Query performance, connections, locks
-- **Infrastructure**: CPU, memory, disk, network
-- **Business**: User activity, feature usage
+```prometheus
+# Métricas customizadas
+estoque_products_total
+estoque_movements_total{type="ENTRY|EXIT"}
+estoque_users_active
+estoque_api_requests_total{endpoint,method,status}
+estoque_api_response_time_seconds{endpoint,method}
 
-### Alertas
-- **Critical**: Service down, high error rate
-- **Warning**: High latency, low disk space
-- **Info**: Deployment completed, user milestones
+# Métricas de sistema
+container_cpu_usage
+container_memory_usage
+postgres_connections_active
+redis_memory_used
+```
+
+### Logs Estruturados
+```json
+{
+  "timestamp": "2026-03-22T10:00:00Z",
+  "level": "INFO",
+  "service": "backend",
+  "module": "products",
+  "operation": "create",
+  "userId": "uuid",
+  "productId": "uuid",
+  "duration": 150,
+  "requestId": "req-123",
+  "message": "Product created successfully"
+}
+```
+
+### Tracing Distribuído
+```
+Frontend (req-123)
+  ├── Backend API (req-123)
+  │   ├── Database Query (req-123)
+  │   └── Cache Get (req-123)
+  └── External Service (req-123)
+```
 
 ## Escalabilidade
 
 ### Horizontal Scaling
-- Stateless application design
-- Session storage in Redis
-- Database connection pooling
-- Load balancer with health checks
+- Frontend: Stateless, escala ilimitada
+- Backend: Stateless com session no Redis
+- PostgreSQL: Read replicas + connection pooling
+- Redis: Cluster mode
+- Nginx: Load balancing round-robin
 
 ### Vertical Scaling
-- Database optimization
-- Query caching
-- Connection pooling tuning
+- PostgreSQL: Máquinas com mais RAM/CPU
+- Redis: Instâncias maiores para cache
+- Backend: Instâncias com mais CPU para processamento
+
+### Estratégias de Cache
+1. **CDN**: Assets estáticos (Cloudflare)
+2. **Redis**: Dados frequentemente acessados
+3. **Browser Cache**: Assets versionados
+4. **Database Cache**: Materialized views, índices
 
 ## Deployment
 
 ### Ambiente de Desenvolvimento
-- Docker Compose local
-- Hot reload para frontend/backend
-- Database seeding automático
+```bash
+docker-compose up -d
+```
+
+### Ambiente de Staging
+- Kubernetes namespace isolado
+- Banco de dados separado
+- Configurações similares à produção
+- Deploy automático via CI/CD
 
 ### Ambiente de Produção
-- Multi-container deployment
-- Blue-green deployment
-- Database migrations automáticas
-- Rollback strategy
+- Kubernetes cluster multi-AZ
+- PostgreSQL com replicação síncrona
+- Redis cluster 3 nodes
+- Nginx ingress controller
+- Certificados Let's Encrypt automáticos
+- Backup automático diário
 
-## Considerações Futuras
+### CI/CD Pipeline
+```yaml
+name: Deploy
+on:
+  push:
+    branches: [main]
 
-### Microservices
-- Separação por domínio de negócio
-- API Gateway para roteamento
-- Service discovery
-- Circuit breaker pattern
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run tests
+        run: docker-compose run backend npm test
+  
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build and push Docker images
+        run: docker build -t estoque-frontend:latest .
+  
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Kubernetes
+        run: kubectl apply -f k8s/
+```
 
-### Serverless
-- Funções para processamento batch
-- Event-driven architecture
-- Pay-per-use cost model
+## Disaster Recovery
 
-### Multi-tenant
-- Isolamento de dados por tenant
-- Shared database, separate schemas
-- Tenant-aware middleware
+### RTO (Recovery Time Objective): 4 horas
+### RPO (Recovery Point Objective): 1 hora
+
+### Plano de Recuperação
+1. **Identificação**: Monitoramento detecta falha
+2. **Contenção**: Isolar componente afetado
+3. **Recuperação**: Restaurar do backup mais recente
+4. **Validação**: Testes de integridade
+5. **Retorno**: Retomar operações normais
+
+### Backups
+- PostgreSQL: Backup contínuo (WAL) + snapshots diários
+- Redis: RDB snapshots a cada hora
+- Arquivos: Backup no S3 compatível
+- Configurações: Versionadas no Git
 
 ---
 
-**Versão**: 1.0  
-**Última Atualização**: 2026-03-22  
-**Responsável**: Renato Zanetti Gomes  
-**Status**: Em desenvolvimento
+**Arquitetura mantida por:** Renato Zanetti Gomes  
+**Última revisão:** 2026-03-22  
+**Versão:** 2.0.0
