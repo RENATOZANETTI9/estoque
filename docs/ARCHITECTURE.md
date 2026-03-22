@@ -1,457 +1,334 @@
-# Arquitetura do Sistema - Controle de Estoque
+# Arquitetura do Sistema
+# Sistema de Controle de Estoque
 
-## Visão Geral da Arquitetura
-
-Sistema baseado em microserviços com frontend monolítico, projetado para alta disponibilidade, escalabilidade horizontal e manutenibilidade.
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Cliente (Browser/Mobile)                  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ HTTPS
-┌──────────────────────────────▼──────────────────────────────┐
-│                    Cloudflare CDN + WAF                     │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────┐
-│                    Nginx (Load Balancer)                    │
-└──────────────┬──────────────────────────────┬───────────────┘
-               │                              │
-    ┌──────────▼──────────┐        ┌──────────▼──────────┐
-    │   Frontend (Next.js)│        │   Backend (Fastify) │
-    │   - SSR/SSG         │        │   - API REST        │
-    │   - PWA             │        │   - WebSocket       │
-    └──────────┬──────────┘        └──────────┬──────────┘
-               │                              │
-    ┌──────────▼──────────────────────────────▼──────────┐
-    │              Service Mesh (Consul)                 │
-    │              - Service Discovery                   │
-    │              - Health Checks                       │
-    │              - Circuit Breaker                     │
-    └──────────┬──────────────────────────────┬──────────┘
-               │                              │
-    ┌──────────▼──────────┐        ┌──────────▼──────────┐
-    │   PostgreSQL        │        │   Redis             │
-    │   - Primary         │        │   - Cache           │
-    │   - Replica         │        │   - Session         │
-    │   - Read Replicas   │        │   - Pub/Sub         │
-    └─────────────────────┘        └─────────────────────┘
-```
+## Visão Arquitetural
+Sistema baseado em microserviços com frontend Next.js 15 (App Router) e backend Fastify, utilizando PostgreSQL como banco de dados principal.
 
 ## Stack Tecnológica
 
-### Frontend (Next.js 15)
-- **Framework**: Next.js 15 com App Router
-- **UI Library**: React 19 + TypeScript
-- **State Management**: Zustand (leve) + React Query
-- **Styling**: Tailwind CSS + CSS Modules
-- **Forms**: React Hook Form + Zod (validação)
-- **Icons**: Lucide React
-- **Charts**: Recharts
-- **Tables**: TanStack Table
-- **Internationalization**: next-intl
-- **Testing**: Jest + React Testing Library + Cypress
+### Frontend
+- **Framework:** Next.js 15 (App Router)
+- **Linguagem:** TypeScript 5.x
+- **UI Library:** Shadcn/ui + Tailwind CSS
+- **Estado:** React Query (TanStack Query) + Zustand
+- **Formulários:** React Hook Form + Zod
+- **Testes:** Jest + React Testing Library + Playwright
+- **Build:** Turbopack (dev) + Webpack (prod)
 
-### Backend (Fastify)
-- **Framework**: Fastify 4.x (alta performance)
-- **Language**: TypeScript
-- **Validation**: Zod + @fastify/type-provider-zod
-- **Authentication**: @fastify/jwt + @fastify/cookie
-- **Database ORM**: Prisma (type-safe)
-- **Caching**: @fastify/redis
-- **Rate Limiting**: @fastify/rate-limit
-- **WebSocket**: @fastify/websocket
-- **File Upload**: @fastify/multipart
-- **Documentação**: @fastify/swagger + @fastify/swagger-ui
-- **Testing**: Jest + Supertest
+### Backend
+- **Framework:** Fastify 4.x
+- **Linguagem:** TypeScript 5.x
+- **ORM:** Prisma 5.x
+- **Autenticação:** JWT + bcrypt
+- **Validação:** Zod
+- **Logging:** Pino
+- **Testes:** Jest + Supertest
+- **Documentação:** Swagger/OpenAPI 3.0
 
 ### Banco de Dados
-- **Primary**: PostgreSQL 16 (transacional)
-- **Cache**: Redis 7 (sessões, cache, pub/sub)
-- **Search**: Elasticsearch 8 (busca full-text)
-- **Queue**: RabbitMQ (processamento assíncrono)
+- **Principal:** PostgreSQL 16.x
+- **Cache:** Redis 7.x (opcional para produção)
+- **Migrations:** Prisma Migrate
+- **Backup:** pg_dump + WAL archiving
 
 ### Infraestrutura
-- **Containerização**: Docker + Docker Compose
-- **Orquestração**: Kubernetes (produção)
-- **CI/CD**: GitHub Actions
-- **Monitoring**: Prometheus + Grafana
-- **Logging**: ELK Stack (Elasticsearch, Logstash, Kibana)
-- **Tracing**: Jaeger
-- **Proxy**: Nginx
-- **Tunnel**: Cloudflared (para acesso externo)
+- **Containerização:** Docker + Docker Compose
+- **Orquestração:** Kubernetes (produção)
+- **Cloud:** Google Cloud Platform (GCP)
+- **CI/CD:** GitHub Actions
+- **Monitoramento:** Prometheus + Grafana
+- **Logs:** Loki + Grafana
+- **Proxy:** Nginx
 
-## Design de Sistema
+## Diagrama de Arquitetura
 
-### Princípios de Design
-1. **Separation of Concerns**: Cada serviço tem responsabilidade única
-2. **Loose Coupling**: Comunicação via API REST/WebSocket
-3. **High Cohesion**: Componentes relacionados agrupados
-4. **Fail Fast**: Validação precoce e tratamento de erros
-5. **Idempotency**: Operações repetíveis sem efeitos colaterais
-
-### Padrões Arquiteturais
-- **Clean Architecture**: Domínio → Aplicação → Infraestrutura
-- **CQRS**: Separação de comandos (write) e queries (read)
-- **Event Sourcing**: Histórico imutável de eventos
-- **Repository Pattern**: Abstração de acesso a dados
-- **Strategy Pattern**: Algoritmos intercambiáveis
-- **Observer Pattern**: Notificações e eventos
-
-## API Contracts
-
-### REST API Design
-
-#### Base URL
 ```
-https://api.estoque.zanetti.dev/v1
+┌─────────────────────────────────────────────────────────────┐
+│                    Usuário (Browser)                        │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ HTTPS (443)
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Nginx (Reverse Proxy)                     │
+│                    - SSL Termination                         │
+│                    - Rate Limiting                          │
+│                    - Compression                            │
+└──────────────┬──────────────────────────────┬───────────────┘
+               │                              │
+               ▼                              ▼
+    ┌────────────────────┐        ┌────────────────────┐
+    │   Frontend         │        │   Backend API      │
+    │   Next.js 15       │        │   Fastify          │
+    │   Port: 3000       │        │   Port: 3001       │
+    └──────────┬─────────┘        └──────────┬─────────┘
+               │                              │
+               │                              │
+    ┌──────────▼─────────┐        ┌──────────▼─────────┐
+    │   Static Assets     │        │   API Gateway      │
+    │   (CDN)            │        │   - Auth           │
+    │   Vercel/Cloud     │        │   - Validation     │
+    │   Storage          │        │   - Rate Limiting  │
+    └────────────────────┘        └──────────┬─────────┘
+                                             │
+                                  ┌──────────▼─────────┐
+                                  │   Service Layer    │
+                                  │   - Products       │
+                                  │   - Inventory      │
+                                  │   - Reports        │
+                                  └──────────┬─────────┘
+                                             │
+                                  ┌──────────▼─────────┐
+                                  │   Data Access      │
+                                  │   Layer (Prisma)   │
+                                  └──────────┬─────────┘
+                                             │
+                                  ┌──────────▼─────────┐
+                                  │   PostgreSQL       │
+                                  │   Database         │
+                                  └────────────────────┘
 ```
+
+## Design de API
+
+### Padrões REST
+- **Versionamento:** `/api/v1/`
+- **Autenticação:** Bearer Token (JWT)
+- **Content-Type:** `application/json`
+- **Status Codes:** HTTP padrão
+- **Paginação:** `limit` e `offset`
+- **Ordenação:** `sort` e `order`
+- **Filtros:** query parameters
+
+### Endpoints Principais
 
 #### Autenticação
-```http
-POST /auth/login
-Content-Type: application/json
-
-{
-  "email": "usuario@empresa.com",
-  "password": "senha123"
-}
-
-Response:
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
-  "expires_in": 3600,
-  "user": {
-    "id": "uuid",
-    "name": "Nome do Usuário",
-    "email": "usuario@empresa.com",
-    "role": "admin"
-  }
-}
+```
+POST   /api/v1/auth/login
+POST   /api/v1/auth/register
+POST   /api/v1/auth/refresh
+POST   /api/v1/auth/logout
+GET    /api/v1/auth/me
 ```
 
 #### Produtos
-```http
-GET /products
-Authorization: Bearer {token}
-Query Params:
-  - page: number (default: 1)
-  - limit: number (default: 20)
-  - search: string
-  - category: string
-  - sort: "name" | "created_at" | "updated_at"
-  - order: "asc" | "desc"
-
-POST /products
-Authorization: Bearer {token}
-Content-Type: multipart/form-data
-
-{
-  "code": "PROD001",
-  "name": "Produto Exemplo",
-  "description": "Descrição do produto",
-  "category_id": "uuid",
-  "unit": "UN",
-  "price": 29.90,
-  "cost": 15.50,
-  "min_stock": 10,
-  "max_stock": 100,
-  "image": File
-}
+```
+GET    /api/v1/products
+POST   /api/v1/products
+GET    /api/v1/products/:id
+PUT    /api/v1/products/:id
+DELETE /api/v1/products/:id
+GET    /api/v1/products/search
+GET    /api/v1/products/categories
 ```
 
 #### Movimentações
-```http
-POST /movements
-Authorization: Bearer {token}
-Content-Type: application/json
+```
+GET    /api/v1/movements
+POST   /api/v1/movements/entry
+POST   /api/v1/movements/exit
+GET    /api/v1/movements/:id
+GET    /api/v1/movements/product/:productId
+GET    /api/v1/movements/report
+```
 
-{
-  "type": "ENTRY", // ENTRY, EXIT, ADJUSTMENT, TRANSFER
-  "product_id": "uuid",
-  "quantity": 10,
-  "unit_price": 15.50,
-  "document_number": "NF123456",
-  "date": "2026-03-22T10:00:00Z",
-  "notes": "Notas adicionais"
+#### Relatórios
+```
+GET    /api/v1/reports/inventory
+GET    /api/v1/reports/movements
+GET    /api/v1/reports/dashboard
+POST   /api/v1/reports/export
+```
+
+### Modelos de Dados (TypeScript)
+
+```typescript
+// Product
+interface Product {
+  id: string;
+  sku: string;
+  name: string;
+  description?: string;
+  categoryId: string;
+  unitPrice: number;
+  costPrice: number;
+  quantity: number;
+  minQuantity: number;
+  maxQuantity?: number;
+  location?: string;
+  barcode?: string;
+  imageUrl?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Movement
+interface Movement {
+  id: string;
+  type: 'ENTRY' | 'EXIT' | 'ADJUSTMENT' | 'TRANSFER';
+  productId: string;
+  quantity: number;
+  unitPrice?: number;
+  totalValue?: number;
+  reference?: string; // NF, pedido, etc
+  userId: string;
+  notes?: string;
+  createdAt: Date;
+}
+
+// Category
+interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  parentId?: string;
+  createdAt: Date;
+}
+
+// User
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'ADMIN' | 'MANAGER' | 'OPERATOR';
+  isActive: boolean;
+  lastLogin?: Date;
+  createdAt: Date;
 }
 ```
 
-### WebSocket API
-```javascript
-// Conexão
-const ws = new WebSocket('wss://api.estoque.zanetti.dev/ws');
+## Padrões de Código
 
-// Eventos
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    type: 'AUTH',
-    token: 'jwt_token'
-  }));
-  
-  ws.send(JSON.stringify({
-    type: 'SUBSCRIBE',
-    channel: 'stock_updates'
-  }));
-};
+### Frontend
+- **Componentes:** Atomic Design (atoms, molecules, organisms)
+- **Estilização:** Tailwind CSS com classes utilitárias
+- **Estado:** Server components quando possível, client quando necessário
+- **API Calls:** React Query com caching automático
+- **Error Handling:** Error boundaries + toast notifications
+- **Loading States:** Skeletons + Suspense
 
-// Recebendo atualizações em tempo real
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  
-  switch(data.type) {
-    case 'STOCK_UPDATE':
-      console.log('Estoque atualizado:', data.payload);
-      break;
-    case 'ALERT':
-      console.log('Alerta:', data.payload);
-      break;
-  }
-};
+### Backend
+- **Estrutura:** Controller → Service → Repository
+- **Validação:** Zod schemas em todas as entradas
+- **Erros:** HTTP status codes apropriados + mensagens claras
+- **Logging:** Structured logging com Pino
+- **Segurança:** Helmet, CORS, rate limiting
+- **Testes:** Unit + Integration + E2E
+
+## Estratégia de Deploy
+
+### Desenvolvimento
+```
+docker-compose up -d
 ```
 
-## Estrutura de Diretórios
+### Staging
+- Branch `staging` → Auto-deploy para GCP Cloud Run
+- Banco de dados separado
+- Dados de teste
 
-### Frontend (Next.js)
-```
-apps/frontend/
-├── src/
-│   ├── app/                    # App Router
-│   │   ├── (auth)/            # Rotas de autenticação
-│   │   ├── (dashboard)/       # Rotas do dashboard
-│   │   ├── api/               # API Routes
-│   │   └── layout.tsx         # Layout raiz
-│   ├── components/            # Componentes reutilizáveis
-│   │   ├── ui/                # Componentes base
-│   │   ├── forms/             # Componentes de formulário
-│   │   ├── tables/            # Componentes de tabela
-│   │   └── charts/            # Componentes de gráficos
-│   ├── lib/                   # Utilitários
-│   │   ├── api/               # Cliente HTTP
-│   │   ├── auth/              # Autenticação
-│   │   ├── utils/             # Funções utilitárias
-│   │   └── constants/         # Constantes
-│   ├── hooks/                 # Custom hooks
-│   ├── stores/                # Zustand stores
-│   ├── types/                 # TypeScript types
-│   └── styles/                # Estilos globais
-├── public/                    # Arquivos estáticos
-└── tests/                     # Testes
-```
-
-### Backend (Fastify)
-```
-apps/backend/
-├── src/
-│   ├── core/                  # Núcleo da aplicação
-│   │   ├── domain/            # Entidades e value objects
-│   │   ├── application/       # Casos de uso
-│   │   └── infrastructure/    # Implementações externas
-│   ├── modules/               # Módulos da aplicação
-│   │   ├── auth/              # Autenticação
-│   │   ├── products/          # Produtos
-│   │   ├── movements/         # Movimentações
-│   │   ├── reports/           # Relatórios
-│   │   └── users/             # Usuários
-│   ├── shared/                # Código compartilhado
-│   │   ├── errors/            # Erros customizados
-│   │   ├── middleware/        # Middleware global
-│   │   ├── plugins/           # Plugins Fastify
-│   │   └── utils/             # Utilitários
-│   ├── config/                # Configurações
-│   ├── database/              # Configuração do banco
-│   └── server.ts              # Ponto de entrada
-├── prisma/                    # Schema Prisma
-└── tests/                     # Testes
-```
-
-## Comunicação entre Serviços
-
-### Síncrona (HTTP/REST)
-- Frontend → Backend (API REST)
-- Backend → Serviços externos (integrações)
-- Health checks entre serviços
-
-### Assíncrona (Eventos)
-```typescript
-// Producer (Backend)
-await rabbitmq.publish('stock.movement.created', {
-  productId: 'uuid',
-  quantity: 10,
-  type: 'ENTRY',
-  userId: 'uuid',
-  timestamp: new Date().toISOString()
-});
-
-// Consumer (Serviço de Notificações)
-rabbitmq.subscribe('stock.movement.created', async (message) => {
-  if (message.quantity < 0) {
-    await notificationService.sendLowStockAlert(message.productId);
-  }
-});
-```
-
-### Em Tempo Real (WebSocket)
-- Atualizações de estoque em tempo real
-- Notificações push para usuários
-- Dashboard com métricas ao vivo
-
-## Segurança
-
-### Camadas de Segurança
-1. **Cloudflare WAF**: Proteção contra DDoS e ataques web
-2. **Nginx**: Rate limiting e filtragem básica
-3. **Application Layer**: Validação de entrada, sanitização
-4. **Database Layer**: Prepared statements, row-level security
-5. **Infrastructure**: Network policies, secrets management
-
-### Autenticação e Autorização
-- JWT com refresh tokens
-- RBAC (Role-Based Access Control)
-- Permissões granulares por recurso
-- Sessões distribuídas no Redis
-- 2FA opcional para administradores
-
-### Criptografia
-- TLS 1.3 em todas as comunicações
-- Dados sensíveis criptografados em repouso (AES-256)
-- Senhas com bcrypt (cost: 12)
-- Secrets no HashiCorp Vault (produção)
+### Produção
+- Branch `main` → Manual deploy (aprovação necessária)
+- Blue/Green deployment
+- Database migrations automáticas
+- Health checks + rollback automático
 
 ## Monitoramento e Observabilidade
 
 ### Métricas
-```prometheus
-# Métricas customizadas
-estoque_products_total
-estoque_movements_total{type="ENTRY|EXIT"}
-estoque_users_active
-estoque_api_requests_total{endpoint,method,status}
-estoque_api_response_time_seconds{endpoint,method}
+1. **Performance:** Response time, throughput, error rate
+2. **Business:** Total products, inventory value, movements/day
+3. **Infra:** CPU, memory, disk, network
+4. **User:** Active users, session duration, feature usage
 
-# Métricas de sistema
-container_cpu_usage
-container_memory_usage
-postgres_connections_active
-redis_memory_used
-```
+### Logs
+- Estruturados em JSON
+- Níveis: error, warn, info, debug
+- Contexto: userId, requestId, timestamp
+- Centralizados no Loki
 
-### Logs Estruturados
-```json
-{
-  "timestamp": "2026-03-22T10:00:00Z",
-  "level": "INFO",
-  "service": "backend",
-  "module": "products",
-  "operation": "create",
-  "userId": "uuid",
-  "productId": "uuid",
-  "duration": 150,
-  "requestId": "req-123",
-  "message": "Product created successfully"
-}
-```
-
-### Tracing Distribuído
-```
-Frontend (req-123)
-  ├── Backend API (req-123)
-  │   ├── Database Query (req-123)
-  │   └── Cache Get (req-123)
-  └── External Service (req-123)
-```
+### Alertas
+- Error rate > 1%
+- Response time P95 > 500ms
+- Database connections > 80%
+- Disk usage > 85%
 
 ## Escalabilidade
 
 ### Horizontal Scaling
-- Frontend: Stateless, escala ilimitada
-- Backend: Stateless com session no Redis
-- PostgreSQL: Read replicas + connection pooling
-- Redis: Cluster mode
-- Nginx: Load balancing round-robin
+- Stateless backend services
+- Database connection pooling
+- Redis para session cache
+- CDN para assets estáticos
 
 ### Vertical Scaling
-- PostgreSQL: Máquinas com mais RAM/CPU
-- Redis: Instâncias maiores para cache
-- Backend: Instâncias com mais CPU para processamento
+- Auto-scaling baseado em CPU/memory
+- Database read replicas
+- Cache layers (Redis)
 
-### Estratégias de Cache
-1. **CDN**: Assets estáticos (Cloudflare)
-2. **Redis**: Dados frequentemente acessados
-3. **Browser Cache**: Assets versionados
-4. **Database Cache**: Materialized views, índices
+### Database
+- Índices otimizados para queries frequentes
+- Partitioning por data para movements
+- Read replicas para relatórios
+- Backup automático + point-in-time recovery
 
-## Deployment
+## Segurança
 
-### Ambiente de Desenvolvimento
-```bash
-docker-compose up -d
-```
+### Camadas
+1. **Network:** VPC, firewall rules, private endpoints
+2. **Application:** Input validation, output encoding, CSRF protection
+3. **Data:** Encryption at rest + in transit, role-based access
+4. **Authentication:** JWT with short expiration, refresh tokens
+5. **Authorization:** RBAC (Admin, Manager, Operator)
 
-### Ambiente de Staging
-- Kubernetes namespace isolado
-- Banco de dados separado
-- Configurações similares à produção
-- Deploy automático via CI/CD
+### Compliance
+- LGPD/GDPR compliance
+- Audit logging
+- Data retention policies
+- Regular security audits
 
-### Ambiente de Produção
-- Kubernetes cluster multi-AZ
-- PostgreSQL com replicação síncrona
-- Redis cluster 3 nodes
-- Nginx ingress controller
-- Certificados Let's Encrypt automáticos
-- Backup automático diário
+## Decisões Arquiteturais
 
-### CI/CD Pipeline
-```yaml
-name: Deploy
-on:
-  push:
-    branches: [main]
+### 1. Next.js 15 (App Router)
+**Decisão:** Usar App Router em vez de Pages Router
+**Justificativa:** Melhor performance (Server Components), melhor DX, suporte a layouts aninhados
+**Trade-offs:** Learning curve, menos bibliotecas compatíveis
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run tests
-        run: docker-compose run backend npm test
-  
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Build and push Docker images
-        run: docker build -t estoque-frontend:latest .
-  
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to Kubernetes
-        run: kubectl apply -f k8s/
-```
+### 2. Fastify em vez de Express
+**Decisão:** Fastify para backend
+**Justificativa:** 2x mais rápido, schema validation nativo, melhor TypeScript support
+**Trade-offs:** Menos middleware disponível
 
-## Disaster Recovery
+### 3. Prisma em vez de TypeORM/Sequelize
+**Decisão:** Prisma como ORM
+**Justificativa:** Type safety, migrations automáticas, melhor DX
+**Trade-offs:** Performance em queries complexas
 
-### RTO (Recovery Time Objective): 4 horas
-### RPO (Recovery Point Objective): 1 hora
+### 4. PostgreSQL em vez de MongoDB
+**Decisão:** PostgreSQL como banco principal
+**Justificativa:** Transações ACID, joins eficientes, JSONB para flexibilidade
+**Trade-offs:** Menos escalável horizontalmente
 
-### Plano de Recuperação
-1. **Identificação**: Monitoramento detecta falha
-2. **Contenção**: Isolar componente afetado
-3. **Recuperação**: Restaurar do backup mais recente
-4. **Validação**: Testes de integridade
-5. **Retorno**: Retomar operações normais
+### 5. Docker Compose para desenvolvimento
+**Decisão:** Docker Compose local
+**Justificativa:** Ambiente consistente, fácil setup, reproduzível
+**Trade-offs:** Overhead de recursos
 
-### Backups
-- PostgreSQL: Backup contínuo (WAL) + snapshots diários
-- Redis: RDB snapshots a cada hora
-- Arquivos: Backup no S3 compatível
-- Configurações: Versionadas no Git
+## Considerações Futuras
+
+### Fase 2
+- Microserviços separados para relatórios pesados
+- Message queue (RabbitMQ) para processamento assíncrono
+- Elasticsearch para busca avançada
+
+### Fase 3
+- Kubernetes para orquestração
+- Service mesh (Istio)
+- Multi-region deployment
+- Disaster recovery automatizado
 
 ---
 
-**Arquitetura mantida por:** Renato Zanetti Gomes  
-**Última revisão:** 2026-03-22  
-**Versão:** 2.0.0
+*Documento mantido por: Renato Zanetti Gomes*  
+*Última atualização: 2026-03-22*  
+*Versão: 1.0*
