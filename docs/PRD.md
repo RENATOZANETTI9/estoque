@@ -1,196 +1,220 @@
-# Product Requirements Document (PRD) - Sistema de Gestão de Estoque
+# Product Requirements Document (PRD) - Sistema de Controle de Estoque
 
 ## Visão Geral
-Sistema de gestão de estoque completo para pequenas e médias empresas, com controle de produtos, movimentações, fornecedores e relatórios analíticos.
+Sistema completo de gerenciamento de estoque para pequenas e médias empresas, com foco em usabilidade, segurança e escalabilidade.
 
-## Objetivos do Negócio
-1. Reduzir perdas por falta de controle de estoque em 40%
-2. Aumentar eficiência operacional em 60%
-3. Reduzir tempo de inventário físico em 70%
-4. Melhorar previsão de compras em 50%
+## Objetivos do Produto
+1. **Reduzir perdas** por vencimento e obsolescência de produtos
+2. **Otimizar compras** através de relatórios inteligentes
+3. **Automatizar processos** manuais de controle de estoque
+4. **Melhorar precisão** do inventário em tempo real
+5. **Garantir conformidade** com normas fiscais e regulatórias
 
-## Personas
-
-### 1. Administrador do Estoque (Primário)
-- **Nome**: Carlos Silva
-- **Idade**: 35 anos
-- **Cargo**: Gerente de Logística
-- **Necessidades**: 
-  - Controle preciso de entrada/saída
-  - Alertas de estoque baixo
-  - Relatórios de movimentação
-  - Controle de validade de produtos
-
-### 2. Operador de Estoque (Secundário)
-- **Nome**: Ana Santos
-- **Idade**: 28 anos
-- **Cargo**: Auxiliar de Estoque
-- **Necessidades**:
-  - Interface simples para registro rápido
-  - Leitura de código de barras
-  - Contagem física simplificada
+## Público-Alvo
+- Pequenas e médias empresas (varejo, distribuição, indústria)
+- Gerentes de estoque e logística
+- Equipe de compras
+- Contadores e departamento fiscal
 
 ## User Stories
 
-### Epic 1: Gestão de Produtos
-- **US001**: Como administrador, quero cadastrar novos produtos com código, nome, categoria e estoque mínimo
-- **US002**: Como administrador, quero editar informações de produtos existentes
-- **US003**: Como administrador, quero inativar produtos que não estão mais em uso
-- **US004**: Como operador, quero buscar produtos por código ou nome
+### 1. Gestão de Produtos
+**Como** gerente de estoque  
+**Quero** cadastrar novos produtos  
+**Para** manter o catálogo atualizado
 
-### Epic 2: Movimentações de Estoque
-- **US005**: Como operador, quero registrar entrada de produtos com fornecedor e quantidade
-- **US006**: Como operador, quero registrar saída de produtos com motivo e destinatário
-- **US007**: Como operador, quero ajustar estoque físico vs sistema
-- **US008**: Como administrador, quero aprovar movimentações acima de limite
+**Critérios de Aceitação:**
+- [ ] Campos obrigatórios: código, nome, categoria, unidade de medida
+- [ ] Upload de imagem do produto
+- [ ] Validação de código único
+- [ ] Histórico de alterações
 
-### Epic 3: Fornecedores
-- **US009**: Como administrador, quero cadastrar fornecedores com dados de contato
-- **US010**: Como administrador, quero avaliar desempenho de fornecedores
-- **US011**: Como operador, quero ver histórico de compras por fornecedor
+### 2. Controle de Entradas/Saídas
+**Como** operador de estoque  
+**Quero** registrar movimentações  
+**Para** manter o saldo atualizado
 
-### Epic 4: Relatórios e Analytics
-- **US012**: Como administrador, quero ver dashboard com KPIs de estoque
-- **US013**: Como administrador, quero gerar relatório de produtos com estoque baixo
-- **US014**: Como administrador, quero analisar sazonalidade de produtos
-- **US015**: Como administrador, quero exportar relatórios em Excel
+**Critérios de Aceitação:**
+- [ ] Tipos de movimento: entrada, saída, ajuste, transferência
+- [ ] Cálculo automático do saldo
+- [ ] Validação de saldo negativo
+- [ ] Notificação para saldo baixo
 
-### Epic 5: Sistema de Alertas
-- **US016**: Como administrador, quero receber alertas de estoque abaixo do mínimo
-- **US017**: Como administrador, quero receber alertas de produtos próximos do vencimento
-- **US018**: Como administrador, quero configurar níveis de alerta por categoria
+### 3. Relatórios
+**Como** gestor  
+**Quero** visualizar relatórios  
+**Para** tomar decisões baseadas em dados
+
+**Critérios de Aceitação:**
+- [ ] Relatório de giro de estoque
+- [ ] Análise ABC de produtos
+- [ ] Curva de vencimento
+- [ ] Exportação em PDF/Excel
+
+### 4. Alertas
+**Como** comprador  
+**Quero** receber alertas  
+**Para** evitar ruptura de estoque
+
+**Critérios de Aceitação:**
+- [ ] Configuração de estoque mínimo por produto
+- [ ] Notificações por email
+- [ ] Dashboard com produtos críticos
+- [ ] Sugestão de compra automática
+
+### 5. Auditoria
+**Como** auditor  
+**Quero** rastrear todas as movimentações  
+**Para** garantir conformidade
+
+**Critérios de Aceitação:**
+- [ ] Log completo de todas as operações
+- [ ] Assinatura digital do operador
+- [ ] Bloqueio de edição de registros históricos
+- [ ] Exportação para auditoria externa
 
 ## Requisitos Funcionais
 
-### RF001 - Autenticação e Autorização
-- Sistema de login com email/senha
-- Controle de acesso baseado em roles (admin, operador)
-- Recuperação de senha
-- Sessão com timeout de 30 minutos
+### RF01 - Cadastro de Produtos
+- RF01.1: Cadastro com código, nome, descrição, categoria, unidade
+- RF01.2: Upload de imagem (máx. 5MB, formatos: JPG, PNG)
+- RF01.3: Campos customizáveis por categoria
+- RF01.4: Importação em lote via CSV/Excel
 
-### RF002 - Gestão de Produtos
-- CRUD completo de produtos
-- Categorização hierárquica
-- Upload de imagens de produtos
-- Código de barras automático
-- Controle de múltiplos depósitos
+### RF02 - Movimentações
+- RF02.1: Registro de entrada (compra, devolução, produção)
+- RF02.2: Registro de saída (venda, consumo interno, perda)
+- RF02.3: Ajuste de estoque (inventário físico)
+- RF02.4: Transferência entre depósitos
 
-### RF003 - Movimentações
-- Registro de entrada com múltiplos produtos
-- Registro de saída com múltiplos produtos
-- Ajuste de inventário
-- Transferência entre depósitos
-- Histórico completo com auditoria
+### RF03 - Controle de Lotes
+- RF03.1: Registro de lote e data de validade
+- RF03.2: Controle FIFO (First In, First Out)
+- RF03.3: Alertas de vencimento (30, 15, 7 dias)
+- RF03.4: Bloqueio automático de produtos vencidos
 
-### RF004 - Fornecedores
-- Cadastro de fornecedores
-- Avaliação por estrelas
-- Histórico de compras
-- Documentos fiscais
+### RF04 - Relatórios
+- RF04.1: Posição de estoque (saldo atual)
+- RF04.2: Movimentação por período
+- RF04.3: Giro de estoque (índice de rotatividade)
+- RF04.4: Análise ABC (classificação por valor)
+- RF04.5: Curva de vencimento
+- RF04.6: Custo médio ponderado
 
-### RF005 - Relatórios
-- Dashboard com KPIs em tempo real
-- Relatório de estoque atual
-- Relatório de movimentações
-- Análise de giro de estoque
-- Previsão de demanda
+### RF05 - Usuários e Permissões
+- RF05.1: Multi-tenancy (empresas independentes)
+- RF05.2: Perfis: administrador, gerente, operador, visualizador
+- RF05.3: Controle de acesso por módulo
+- RF05.4: Log de acesso e operações
 
-## Requisitos Não Funcionais
+## Requisitos Não-Funcionais
 
-### RNF001 - Performance
-- Tempo de resposta < 2 segundos para 95% das requisições
+### RNF01 - Performance
+- Tempo de resposta < 2s para 95% das requisições
 - Suporte a 100 usuários concorrentes
-- Carga de 10.000 produtos
+- Carga inicial de 50.000 produtos
 
-### RNF002 - Segurança
-- Autenticação JWT
-- Criptografia de senhas (bcrypt)
-- HTTPS obrigatório
-- Rate limiting por IP
-- Logs de auditoria
+### RNF02 - Segurança
+- Autenticação JWT com refresh token
+- Criptografia de dados sensíveis
+- Proteção contra SQL injection e XSS
+- Rate limiting (100 requisições/minuto por IP)
+- Backup diário automático
 
-### RNF003 - Disponibilidade
-- SLA de 99.5%
-- Backup automático diário
+### RNF03 - Disponibilidade
+- SLA de 99.5% (uptime mensal)
 - Recuperação de desastres < 4 horas
+- Replicação de banco de dados
 
-### RNF004 - Usabilidade
+### RNF04 - Usabilidade
 - Interface responsiva (mobile/desktop)
 - Tempo de aprendizado < 30 minutos
 - Acessibilidade WCAG 2.1 AA
+- Suporte a múltiplos idiomas (PT-BR, EN)
+
+### RNF05 - Manutenibilidade
+- Código coberto por testes (> 80%)
+- Documentação técnica completa
+- Logs estruturados (JSON)
+- Monitoramento com métricas
 
 ## Métricas de Sucesso
 
-### Métricas de Negócio
-1. **Redução de Perdas**: Diminuir perdas por falta de controle em 40% em 6 meses
-2. **Eficiência Operacional**: Reduzir tempo de inventário físico em 70%
-3. **Satisfação do Usuário**: NPS > 50 em 3 meses
-4. **Adoção**: 90% dos operadores usando sistema diariamente em 1 mês
+### KPIs do Produto
+1. **Precisão do Estoque**: Diferença < 1% entre físico e sistema
+2. **Tempo de Processamento**: < 30 segundos por operação
+3. **Satisfação do Usuário**: NPS > 50
+4. **Redução de Perdas**: Diminuição de 20% em produtos vencidos
+5. **Adoção**: 80% dos usuários ativos diariamente
 
-### Métricas Técnicas
-1. **Uptime**: > 99.5%
+### KPIs Técnicos
+1. **Disponibilidade**: > 99.5%
 2. **Performance**: P95 < 2s
-3. **Erros**: < 0.1% de requisições com erro
-4. **Segurança**: Zero vulnerabilidades críticas
+3. **Segurança**: Zero vulnerabilidades críticas
+4. **Cobertura de Testes**: > 80%
+5. **Tempo de Deploy**: < 10 minutos
 
 ## Roadmap
 
-### Fase 1 (MVP - 2 meses)
-- Autenticação básica
-- CRUD de produtos
-- Movimentações simples
-- Dashboard básico
+### Fase 1 (MVP - 3 meses)
+- [ ] Cadastro básico de produtos
+- [ ] Movimentações simples (entrada/saída)
+- [ ] Relatório de posição de estoque
+- [ ] Autenticação e autorização básica
 
-### Fase 2 (3-4 meses)
-- Sistema de fornecedores
-- Relatórios avançados
-- Sistema de alertas
-- Integração com leitor de código de barras
+### Fase 2 (4-6 meses)
+- [ ] Controle de lotes e validade
+- [ ] Análise ABC
+- [ ] Alertas automáticos
+- [ ] Importação/exportação de dados
 
-### Fase 3 (5-6 meses)
-- Múltiplos depósitos
-- Transferências entre depósitos
-- Previsão de demanda
-- API pública para integração
+### Fase 3 (7-9 meses)
+- [ ] Multi-depósito
+- [ ] Integração com sistemas ERP
+- [ ] Mobile app
+- [ ] Dashboard analítico
 
-## Considerações Técnicas
-
-### Stack Tecnológica
-- Frontend: Next.js 15 (React)
-- Backend: Fastify (Node.js)
-- Banco de Dados: PostgreSQL
-- Cache: Redis
-- Fila: Bull (Redis)
-- Container: Docker
-- CI/CD: GitHub Actions
-
-### Infraestrutura
-- Cloud: Google Cloud Platform
-- Load Balancer: Nginx
-- Monitoramento: Prometheus + Grafana
-- Logs: ELK Stack
+### Fase 4 (10-12 meses)
+- [ ] Inteligência artificial para previsão
+- [ ] Integração com leitor de código de barras
+- [ ] API pública para parceiros
+- [ ] Marketplace de integrações
 
 ## Restrições
-- Orçamento máximo: R$ 50.000
-- Time de desenvolvimento: 3 desenvolvedores
-- Prazo total: 6 meses
-- Conformidade: LGPD brasileira
 
-## Riscos e Mitigações
+### Técnicas
+- Deve funcionar offline por 24h (modo desconectado)
+- Compatível com navegadores modernos (Chrome 90+, Firefox 88+)
+- Suporte a impressão de etiquetas padrão Zebra
+- Integração com balanças eletrônicas via USB
 
-### Riscos Técnicos
-1. **Escalabilidade**: Arquitetura microservices-ready
-2. **Segurança**: Penetration testing trimestral
-3. **Performance**: Load testing contínuo
+### Negócio
+- Custo mensal < R$ 500 para empresas até 50 usuários
+- Implementação em até 2 semanas
+- Suporte em horário comercial (8h-18h)
+- Treinamento inicial incluído
 
-### Riscos de Negócio
-1. **Adoção**: Treinamento intensivo + suporte
-2. **Mudança de Processos**: Faseamento gradual
-3. **Custos**: Monitoramento rigoroso de infra
+### Regulatórias
+- Conformidade com Lei Geral de Proteção de Dados (LGPD)
+- Retenção de dados por 5 anos (fiscal)
+- Assinatura digital para operações críticas
+- Auditoria independente anual
+
+## Glossário
+
+| Termo | Definição |
+|-------|-----------|
+| SKU | Stock Keeping Unit - código único do produto |
+| FIFO | First In, First Out - método de controle de validade |
+| LIFO | Last In, First Out - método alternativo |
+| CMP | Custo Médio Ponderado |
+| Giro | Índice de rotatividade do estoque |
+| Ruptura | Falta de produto quando há demanda |
+| Obsoleto | Produto sem demanda há mais de 12 meses |
+| Inventário | Contagem física dos itens em estoque |
 
 ---
 
-**Versão**: 1.0  
-**Última Atualização**: 2026-03-22  
-**Responsável**: Renato Zanetti Gomes  
-**Status**: Em desenvolvimento
+**Documento mantido por:** Renato Zanetti Gomes  
+**Última atualização:** 2026-03-22  
+**Versão:** 1.0.0
