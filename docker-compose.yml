@@ -1,179 +1,146 @@
 version: '3.8'
 
 services:
-  # Banco de dados PostgreSQL
-  postgres:
+  # PostgreSQL Database
+  db:
     image: postgres:16-alpine
-    container_name: estoque-postgres
+    container_name: estoque-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-estoque}
-      POSTGRES_USER: ${POSTGRES_USER:-estoque_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-senha_segura}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: estoque
       TZ: America/Sao_Paulo
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
     networks:
       - estoque-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-estoque_user}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1G
-        reservations:
           cpus: '0.5'
           memory: 512M
-    ports:
-      - "5432:5432"
 
-  # Backend Fastify API
+  # Backend API
   backend:
     build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: docker/backend/Dockerfile
     container_name: estoque-backend
     restart: unless-stopped
-    environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-estoque_user}:${POSTGRES_PASSWORD:-senha_segura}@postgres:5432/${POSTGRES_DB:-estoque}
-      JWT_SECRET: ${JWT_SECRET:-seu_jwt_secret_aqui}
-      PORT: ${BACKEND_PORT:-3001}
-      TZ: America/Sao_Paulo
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
-    volumes:
-      - ./apps/backend:/app
-      - /app/node_modules
-    networks:
-      - estoque-network
-    healthcheck:
-      test: ["CMD", "node", "healthcheck.js"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
-    ports:
-      - "${BACKEND_PORT:-3001}:${BACKEND_PORT:-3001}"
-
-  # Frontend Next.js
-  frontend:
-    build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
-    container_name: estoque-frontend
-    restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/estoque
+      NODE_ENV: production
+      PORT: 3001
+      JWT_SECRET: ${JWT_SECRET:-default-secret-change-in-production}
       TZ: America/Sao_Paulo
-    depends_on:
-      - backend
     volumes:
-      - ./apps/frontend:/app
+      - ./src/backend:/app
       - /app/node_modules
-      - /app/.next
+    ports:
+      - "3001:3001"
     networks:
       - estoque-network
     healthcheck:
-      test: ["CMD", "node", "healthcheck.js"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
     deploy:
       resources:
         limits:
           cpus: '1.0'
           memory: 1G
-        reservations:
+
+  # Frontend React App
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    container_name: estoque-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      REACT_APP_API_URL: http://localhost:8080/api
+      NODE_ENV: production
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./src/frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    networks:
+      - estoque-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
           cpus: '0.5'
           memory: 512M
-    ports:
-      - "${FRONTEND_PORT:-3000}:${FRONTEND_PORT:-3000}"
 
-  # Proxy Reverso Nginx
+  # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
     container_name: estoque-nginx
     restart: unless-stopped
     depends_on:
-      - backend
       - frontend
+      - backend
+    ports:
+      - "8080:80"
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./infra/nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/logs:/var/log/nginx
     networks:
       - estoque-network
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
           cpus: '0.25'
-          memory: 128M
-    ports:
-      - "80:80"
-      - "443:443"
+          memory: 256M
 
-  # pgAdmin (opcional - apenas para desenvolvimento)
+  # Database Admin (Optional)
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: estoque-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@estoque.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin123}
+      PGADMIN_DEFAULT_EMAIL: admin@estoque.com
+      PGADMIN_DEFAULT_PASSWORD: admin
       TZ: America/Sao_Paulo
-    depends_on:
-      - postgres
+    ports:
+      - "5050:80"
     networks:
       - estoque-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
-    ports:
-      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      - db
 
 volumes:
   postgres_data:
-    name: estoque-postgres-data
+    name: estoque_postgres_data
 
 networks:
   estoque-network:
-    name: estoque-network
+    name: estoque_network
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
