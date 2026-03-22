@@ -17,12 +17,3 @@ body {
   );
   min-height: 100vh;
 }
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-gray-900 text-white;
-  }
-}
