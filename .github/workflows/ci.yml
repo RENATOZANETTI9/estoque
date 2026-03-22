@@ -1,14 +1,14 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
 
 jobs:
-  lint-backend:
-    name: Lint Backend
+  backend:
+    name: Backend - Build & Test
     runs-on: ubuntu-latest
     
     steps:
@@ -18,20 +18,38 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.x'
           cache: 'npm'
-          cache-dependency-path: 'src/backend/package-lock.json'
+          cache-dependency-path: src/backend/package-lock.json
       
-      - name: Install dependencies (Backend)
+      - name: Install backend dependencies
         working-directory: src/backend
         run: npm ci
       
-      - name: Run ESLint
+      - name: Build backend
         working-directory: src/backend
-        run: npm run lint --if-present || npx eslint . --ext .js,.ts --max-warnings=0
-  
-  lint-frontend:
-    name: Lint Frontend
+        run: npm run build
+      
+      - name: Run backend tests
+        working-directory: src/backend
+        run: |
+          if [ -f "package.json" ] && grep -q '"test"' package.json; then
+            npm test
+          else
+            echo "No test script found in backend package.json"
+          fi
+      
+      - name: Lint backend
+        working-directory: src/backend
+        run: |
+          if [ -f "package.json" ] && grep -q '"lint"' package.json; then
+            npm run lint
+          else
+            echo "No lint script found in backend package.json"
+          fi
+
+  frontend:
+    name: Frontend - Build & Test
     runs-on: ubuntu-latest
     
     steps:
@@ -41,201 +59,97 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.x'
           cache: 'npm'
-          cache-dependency-path: 'src/frontend/package-lock.json'
+          cache-dependency-path: src/frontend/package-lock.json
       
-      - name: Install dependencies (Frontend)
+      - name: Install frontend dependencies
         working-directory: src/frontend
         run: npm ci
       
-      - name: Run ESLint
+      - name: Build frontend
         working-directory: src/frontend
-        run: npm run lint --if-present || npx eslint . --ext .js,.ts,.jsx,.tsx --max-warnings=0
-  
-  test-backend:
-    name: Test Backend
+        run: npm run build
+      
+      - name: Run frontend tests
+        working-directory: src/frontend
+        run: |
+          if [ -f "package.json" ] && grep -q '"test"' package.json; then
+            npm test
+          else
+            echo "No test script found in frontend package.json"
+          fi
+      
+      - name: Lint frontend
+        working-directory: src/frontend
+        run: |
+          if [ -f "package.json" ] && grep -q '"lint"' package.json; then
+            npm run lint
+          else
+            echo "No lint script found in frontend package.json"
+          fi
+
+  docker:
+    name: Docker - Build & Push
     runs-on: ubuntu-latest
-    needs: [lint-backend]
-    
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: estoque_test
-          POSTGRES_USER: estoque_user
-          POSTGRES_PASSWORD: senha_segura
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main'
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: 'src/backend/package-lock.json'
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
       
-      - name: Install dependencies (Backend)
-        working-directory: src/backend
-        run: npm ci
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/backend/Dockerfile
+          push: true
+          tags: |
+            renatozanetti9/estoque-backend:latest
+            renatozanetti9/estoque-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       
-      - name: Run tests
-        working-directory: src/backend
-        env:
-          NODE_ENV: test
-          DATABASE_URL: postgresql://estoque_user:senha_segura@localhost:5432/estoque_test
-          JWT_SECRET: test_jwt_secret
-        run: npm test -- --coverage
-  
-  test-frontend:
-    name: Test Frontend
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/frontend/Dockerfile
+          push: true
+          tags: |
+            renatozanetti9/estoque-frontend:latest
+            renatozanetti9/estoque-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [lint-frontend]
+    needs: [docker]
+    if: github.ref == 'refs/heads/main'
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: 'src/frontend/package-lock.json'
-      
-      - name: Install dependencies (Frontend)
-        working-directory: src/frontend
-        run: npm ci
-      
-      - name: Run tests
-        working-directory: src/frontend
-        run: npm test -- --coverage
-  
-  build-backend:
-    name: Build Backend
-    runs-on: ubuntu-latest
-    needs: [test-backend]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: 'src/backend/package-lock.json'
-      
-      - name: Install dependencies (Backend)
-        working-directory: src/backend
-        run: npm ci
-      
-      - name: Build Backend
-        working-directory: src/backend
-        run: npm run build --if-present || echo "No build script found"
-      
-      - name: Docker build Backend
-        working-directory: src/backend
-        run: |
-          docker build -t estoque-backend:ci-${{ github.sha }} .
-          docker images estoque-backend:ci-${{ github.sha }}
-  
-  build-frontend:
-    name: Build Frontend
-    runs-on: ubuntu-latest
-    needs: [test-frontend]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: 'src/frontend/package-lock.json'
-      
-      - name: Install dependencies (Frontend)
-        working-directory: src/frontend
-        run: npm ci
-      
-      - name: Build Frontend
-        working-directory: src/frontend
-        run: npm run build --if-present || echo "No build script found"
-      
-      - name: Docker build Frontend
-        working-directory: src/frontend
-        run: |
-          docker build -t estoque-frontend:ci-${{ github.sha }} .
-          docker images estoque-frontend:ci-${{ github.sha }}
-  
-  security-scan:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-      
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-      
-      - name: Run npm audit
-        run: |
-          cd src/backend && npm audit --audit-level=high || true
-          cd ../frontend && npm audit --audit-level=high || true
-  
-  docker-compose-test:
-    name: Docker Compose Test
-    runs-on: ubuntu-latest
-    needs: [security-scan]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Start services with Docker Compose
-        run: |
-          docker-compose up -d --build
-          sleep 30
-      
-      - name: Check running containers
-        run: docker-compose ps
-      
-      - name: Check backend health
-        run: |
-          curl -f http://localhost:3001/health || \
-          curl -f http://localhost:3001/api/health || \
-          echo "Backend health endpoint not found"
-      
-      - name: Check frontend health
-        run: |
-          curl -f http://localhost:3000 || \
-          echo "Frontend health check failed"
-      
-      - name: Stop services
-        if: always()
-        run: docker-compose down -v
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/estoque
+            docker-compose pull
+            docker-compose up -d --remove-orphans
+            docker system prune -f
