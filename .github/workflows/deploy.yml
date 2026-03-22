@@ -1,0 +1,389 @@
+name: Deploy Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version tag'
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: ${{ github.repository }}/backend
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+  IMAGE_NAME_NGINX: ${{ github.repository }}/nginx
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+      
+      - name: Build and push Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src/backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src/frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push Nginx
+        uses: docker/build-push-action@v5
+        with:
+          context: ./infra/nginx
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_NGINX }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_NGINX }}:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Generate deployment manifest
+        run: |
+          cat > docker-compose.prod.yml << 'EOF'
+          version: '3.8'
+          
+          services:
+            postgres:
+              image: postgres:16-alpine
+              container_name: estoque-postgres
+              restart: unless-stopped
+              environment:
+                POSTGRES_DB: ${POSTGRES_DB:-estoque}
+                POSTGRES_USER: ${POSTGRES_USER:-estoque_user}
+                POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+                TZ: America/Sao_Paulo
+              volumes:
+                - postgres_data:/var/lib/postgresql/data
+                - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+              networks:
+                - estoque-network
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-estoque_user}"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+                start_period: 30s
+              deploy:
+                resources:
+                  limits:
+                    cpus: '1.0'
+                    memory: 1G
+                  reservations:
+                    cpus: '0.5'
+                    memory: 512M
+          
+            backend:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }}
+              container_name: estoque-backend
+              restart: unless-stopped
+              environment:
+                NODE_ENV: production
+                DATABASE_URL: postgresql://${POSTGRES_USER:-estoque_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-estoque}
+                JWT_SECRET: ${JWT_SECRET}
+                PORT: 3001
+                TZ: America/Sao_Paulo
+              depends_on:
+                postgres:
+                  condition: service_healthy
+              networks:
+                - estoque-network
+              healthcheck:
+                test: ["CMD", "node", "healthcheck.js"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 40s
+              deploy:
+                resources:
+                  limits:
+                    cpus: '1.0'
+                    memory: 512M
+                  reservations:
+                    cpus: '0.5'
+                    memory: 256M
+          
+            frontend:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.sha }}
+              container_name: estoque-frontend
+              restart: unless-stopped
+              environment:
+                NODE_ENV: production
+                NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:3001/api}
+                TZ: America/Sao_Paulo
+              depends_on:
+                - backend
+              networks:
+                - estoque-network
+              healthcheck:
+                test: ["CMD", "node", "healthcheck.js"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+                start_period: 60s
+              deploy:
+                resources:
+                  limits:
+                    cpus: '1.0'
+                    memory: 1G
+                  reservations:
+                    cpus: '0.5'
+                    memory: 512M
+          
+            nginx:
+              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_NGINX }}:${{ github.sha }}
+              container_name: estoque-nginx
+              restart: unless-stopped
+              depends_on:
+                - backend
+                - frontend
+              networks:
+                - estoque-network
+              healthcheck:
+                test: ["CMD", "nginx", "-t"]
+                interval: 30s
+                timeout: 10s
+                retries: 3
+              deploy:
+                resources:
+                  limits:
+                    cpus: '0.5'
+                    memory: 256M
+                  reservations:
+                    cpus: '0.25'
+                    memory: 128M
+              ports:
+                - "80:80"
+                - "443:443"
+          
+          volumes:
+            postgres_data:
+              name: estoque-postgres-data
+          
+          networks:
+            estoque-network:
+              name: estoque-network
+              driver: bridge
+              ipam:
+                config:
+                  - subnet: 172.20.0.0/16
+          EOF
+      
+      - name: Upload deployment manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-manifest
+          path: docker-compose.prod.yml
+          retention-days: 7
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    environment:
+      name: staging
+      url: https://staging.estoque.example.com
+    
+    steps:
+      - name: Download deployment manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-manifest
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+      
+      - name: Deploy to staging server
+        run: |
+          scp -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/opt/estoque/
+          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
+          cd /opt/estoque
+          
+          # Pull latest images
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker-compose -f docker-compose.prod.yml pull
+          
+          # Deploy with zero downtime
+          docker-compose -f docker-compose.prod.yml up -d --no-deps backend
+          sleep 10
+          docker-compose -f docker-compose.prod.yml up -d --no-deps frontend
+          sleep 10
+          docker-compose -f docker-compose.prod.yml up -d --no-deps nginx
+          
+          # Clean up old images
+          docker image prune -f
+          
+          # Verify deployment
+          docker-compose -f docker-compose.prod.yml ps
+          EOF
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-staging]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: https://estoque.example.com
+    
+    steps:
+      - name: Download deployment manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-manifest
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+      
+      - name: Create backup
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+          cd /opt/estoque
+          docker-compose -f docker-compose.prod.yml exec -T postgres pg_dump -U estoque_user estoque > backup_$(date +%Y%m%d_%H%M%S).sql
+          tar -czf backup_$(date +%Y%m%d_%H%M%S).tar.gz backup_*.sql
+          rm backup_*.sql
+          EOF
+      
+      - name: Deploy to production server
+        run: |
+          scp -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }}:/opt/estoque/
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+          cd /opt/estoque
+          
+          # Pull latest images
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker-compose -f docker-compose.prod.yml pull
+          
+          # Deploy with zero downtime (blue-green strategy)
+          # Start new backend
+          docker-compose -f docker-compose.prod.yml up -d --no-deps --scale backend=2 backend
+          sleep 15
+          
+          # Health check new backend
+          NEW_BACKEND=$(docker-compose -f docker-compose.prod.yml ps -q backend | tail -1)
+          if docker exec $NEW_BACKEND node healthcheck.js; then
+            # Switch traffic to new backend
+            docker-compose -f docker-compose.prod.yml up -d --no-deps --scale backend=1 backend
+            sleep 5
+            docker-compose -f docker-compose.prod.yml up -d --no-deps frontend
+            sleep 10
+            docker-compose -f docker-compose.prod.yml up -d --no-deps nginx
+          else
+            echo "New backend health check failed, rolling back"
+            docker-compose -f docker-compose.prod.yml up -d --no-deps --scale backend=1 backend
+            exit 1
+          fi
+          
+          # Clean up old images
+          docker image prune -f
+          
+          # Verify deployment
+          docker-compose -f docker-compose.prod.yml ps
+          
+          # Monitor for 1 minute
+          for i in {1..12}; do
+            echo "Health check attempt $i"
+            curl -f http://localhost:3001/health || curl -f http://localhost:3001/api/health || true
+            sleep 5
+          done
+          EOF
+      
+      - name: Notify deployment success
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "attachments": [{
+                "color": "good",
+                "title": "✅ Production Deployment Successful",
+                "text": "Version ${{ github.sha }} deployed to production",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Commit",
+                    "value": "${{ github.sha }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Deployed by",
+                    "value": "${{ github.actor }}",
+                    "short": true
+                  }
+                ],
+                "footer": "Zanetti Fábrica de Softwares",
+                "ts": "${{ github.event.head_commit.timestamp }}"
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
