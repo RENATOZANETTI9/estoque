@@ -11,7 +11,7 @@ const config: Config = {
       colors: {
         primary: "#0a0a0f",
         "bg-card": "#13141a",
-        accent: "cyan-400",
+        accent: "#22d3ee",
       },
       gradientColorStops: {
         cyan: "#00ffff",
